@@ -1,0 +1,355 @@
+<!DOCTYPE html>
+<html lang="en-US">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Air Pressure</title>
+<!--    <script src="script.js" defer></script>-->
+</head>
+
+<style>
+    body{
+        background: rgba(0,0,0,.5);
+    }
+    #grid{
+        width: 300px;
+        height: 300px;
+/*        background: rgba(250,250,250,.5);*/
+        border-style: solid;
+        border-color: white;
+    }
+    #block1{
+        width: 100px;
+    }
+    
+</style>
+    
+<body>
+<!--    <div  id="block1"></div>-->
+<!--    <div id="block2"></div>-->
+    <canvas id="grid">test</canvas>
+</body>
+
+<script type="text/javascript">
+    function draw(){
+        var canvas = document.getElementById('grid');
+
+        if(canvas.getContext){
+            var ctx = canvas.getContext('2d');
+            //drawing code here
+            ctx.fillRect(0,0,100,50);
+            ctx.fillRect(0,100,100,50);
+            ctx.fillRect(200,100,100,50);
+            ctx.fillRect(200,0,100,50);
+            
+        }else{
+            //canvas-unsupported code here
+        }
+    }
+    
+    const neutral = 1;
+
+    class PressureNode{
+        constructor(x,y,manager){
+            this.x = x;
+            this.y = y;
+            this.manager = manager;
+            this.mass = 1;
+            this.totalVolume = 1;
+            this.occupiedVolume = 0;
+            this.gasVolume = this.totalVolume-this.occupiedVolume;
+//            this.temp = 0;
+            this.pressure = (this.mass/this.gasVolume) - neutral;
+//            this.alpha = this.getAlpha(this.pressure);
+            this.alpha = 0;
+            this.setAlpha();
+        }
+        
+        modifyMass(deltaMass){
+            this.mass = this.mass + deltaMass;
+            this.pressure = (this.mass/this.gasVolume) - neutral;
+//            this.alpha = this.getAlpha();
+            this.setAlpha();
+//            console.log("pressure: " + String(this.pressure) + "; alpha: " + this.alpha.toFixed(10));
+            this.drawNode();
+        }
+        
+        setMass(mass){
+            this.mass = mass;
+            this.pressure = (this.mass/this.gasVolume) - neutral;
+            this.alpha = this.getAlpha(this.pressure); 
+            this.drawNode();
+        }
+    
+        getAlpha(pressure){
+            var alpha = pressure * .5 + .5;
+//            console.log("inner alpha: " + alpha.toFixed(4));
+            if(alpha > 1){
+                alpha = 1;
+            }else if(alpha < 0){
+                alpha = 0;
+            }
+            return alpha;
+        }
+        
+        setAlpha(){
+            var alpha = this.pressure * .5 + .5;
+//            console.log("inner alpha: " + alpha.toFixed(4));
+            if(alpha > 1){
+                alpha = 1;
+            }else if(alpha < 0){
+                alpha = 0;
+            }
+            this.alpha = alpha;
+        }
+        
+        setNeighbors(){
+            //determine number of neighbors
+            this.neighbors = [];
+            //check neighbors, if xy is in bounds, get neighbor from manger and push to neighbors
+            if(this.x-1 >= 0){
+                //left column
+                //left middle
+                this.neighbors.push(this.manager.nodes[this.x-1][this.y]);
+                //left bottom
+                if(this.y-1 >= 0){
+                    this.neighbors.push(this.manager.nodes[this.x-1][this.y-1]);
+                }
+                //Left top
+                if(this.y+1 < this.manager.yLength){
+                    this.neighbors.push(this.manager.nodes[this.x-1][this.y+1]);
+                }
+            }
+            
+            if(this.x+1 < this.manager.xLength){
+                //right column
+                //right middle
+                this.neighbors.push(this.manager.nodes[this.x+1][this.y]);
+                //right bottom
+                if(this.y-1 >= 0){
+                    this.neighbors.push(this.manager.nodes[this.x+1][this.y-1]);
+                }
+                //right top
+                if(this.y+1 < this.manager.yLength){
+                    this.neighbors.push(this.manager.nodes[this.x+1][this.y+1]);
+                }
+            }
+            
+            //center top
+            if(this.y+1 < this.manager.yLength){
+                this.neighbors.push(this.manager.nodes[this.x][this.y+1]);
+            }
+            //center bottom
+            if(this.y-1 >= 0){
+                this.neighbors.push(this.manager.nodes[this.x][this.y-1]);
+            }
+        }
+        
+        drawNode(){
+            var canvas = document.getElementById('grid');
+
+            if(canvas.getContext){
+                var ctx = canvas.getContext('2d');
+                //drawing code here
+                var color = 'rgba(255, 255, 255,' + String(this.alpha) + ')';
+                ctx.fillStyle = color;
+//                ctx.fillStyle = 'rgba(255, 255, 255,1)';
+                
+                ctx.clearRect(this.x*this.manager.xOffset,this.y*this.manager.yOffset,this.manager.xOffset,this.manager.yOffset);
+                ctx.fillRect(this.x*this.manager.xOffset,this.y*this.manager.yOffset,this.manager.xOffset,this.manager.yOffset); 
+//                console.log("drew node")
+            }else{
+                //canvas-unsupported code here
+            }
+        }
+        
+        placeOrders(){
+            //loop through neighbors
+//            var deltaP = new Array(this.neighbors.length);
+//            console.log("placeOrders ran")
+            var i;
+            for(i = 0; i< this.neighbors.length;i++){
+                var delta = this.pressure - this.neighbors[i].pressure;               
+                if(delta > 0){
+//                    deltaP[i] = delta;
+                    //create order and push to managers orders
+                    var exchangeAmount = delta * 0.0075;
+                    this.manager.orders.push(new Order(this.x,this.y,this.neighbors[i].x,this.neighbors[i].y,exchangeAmount));
+//                    console.log("orderPlaced");
+                }
+            }
+        }
+    }
+    
+    class SystemManager{
+        constructor(xCount=3,yCount=3,canvasWidth,canvasHeight){
+            this.xLength = xCount;
+            this.yLength = yCount;
+            this.xOffset = canvasWidth/(xCount);
+            this.yOffset = canvasHeight/(yCount * 2);
+            this.orders = [];
+//            this.nodes = new Array(xCount,yCount);
+            this.nodes = this.create2dArray(xCount,yCount);
+            //create grid of pressure nodes
+            var x;
+            var y;
+            
+            //fill nodes
+            for(x=0;x<xCount;x++){
+                for(y=0;y<yCount;y++){
+                    this.nodes[x][y] = new PressureNode(x,y,this);
+//                    this.nodes[x][y].drawNode();
+                }
+            }
+            
+            //set neighbors
+            //draw nodes
+            for(x=0;x<xCount;x++){
+                for(y=0;y<yCount;y++){
+//                    this.nodes[x][y] = new PressureNode(x,y,this);
+                    this.nodes[x][y].setNeighbors();
+                    this.nodes[x][y].drawNode();
+                }
+            }
+            this.randomizeNodes();
+            this.t = setInterval(() => this.updateNodes(),100);
+            console.log("end of constructor");
+            
+            //loop through grid and draw
+        }
+//        
+        create2dArray(x,y){
+            var output = new Array(y);
+            var i;
+            for (i=0;i< x;i++){
+                output[i] = new Array(x)
+            }
+            return output;
+        }
+        
+        updateNodes(){
+//            var _this = this;
+//            console.log("xLength: " + String(this.xLength));
+            //clear orders
+            this.orders = [];
+            //run placeOrders on each node
+            var x;
+            var y;
+            
+            var totalMass = 0;
+            
+            for(x = 0; x < this.xLength; x++){
+                for(y = 0; y < this.yLength; y++){
+                    this.nodes[x][y].placeOrders();
+                    totalMass = totalMass + this.nodes[x][y].mass;
+//                    console.log("after place orders in loop");
+                }
+            }
+//            console.log("totalMass: " + String(totalMass));
+            //check orders & remove duplicates (update orders)
+//            this.checkOrders();
+            //applyOrders, adjust masses of each node in the orders
+//            this.applyOrders();
+            
+            //APPLY ORDERS
+            var i;
+            for(i = 0;i< this.orders.length;i++){
+                //remove from one node
+                var decreaseMass = (-1) * this.orders[i].amount;
+                this.nodes[this.orders[i].fromX][this.orders[i].fromY].modifyMass(decreaseMass);
+                //give to another
+                this.nodes[this.orders[i].toX][this.orders[i].toY].modifyMass(this.orders[i].amount); 
+            }
+            
+            
+            this.checkForEqualibrium();
+//            console.log("updated Nodes");
+        }
+        
+//        checkOrders(){
+//            //eh they're probably fine
+//        }
+        
+        applyOrders(){
+            //
+            var i;
+            for(i = 0;i< this.orders.length;i++){
+                //remove from one node
+                this.nodes[this.orders.fromX][this.orders.fromY].modifyMass(-this.orders[i].amount);
+                //give to another
+                this.nodes[this.orders.toX][this.orders.toY].modifyMass(this.orders[i].amount);
+            }
+            
+//            var x;
+//            var y;
+//            for( )
+        }
+        
+        //randomly modify the nodes masses
+        randomizeNodes(averageMass = 1, maxDelta = 0.5){
+            var totalMass = averageMass * this.xLength * this.yLength;
+            var x;
+            var y;
+            for(x=0;x< this.xLength;x++){
+                for(y=0; y<this.yLength;y++){
+                    var mass = averageMass + (Math.random()-0.5)*2*maxDelta;
+                    if(totalMass - mass < 0){
+                        //subtract
+                        mass = 0;
+                    }
+                    this.nodes[x][y].setMass(mass);
+                }
+            }
+            
+        }
+        
+        checkForEqualibrium(){
+            //if all the pressures are equal/close enough
+            var atEquilibrium = true;
+            
+            var x;
+            var y;
+            var averagePressure;
+            for(x = 0; x < this.xLength; x++){
+                for(y = 0; y < this.yLength; y++){
+                    if(x == 0 && y == 0){
+                        averagePressure = this.nodes[x][y].pressure;
+                    }else{
+                        var delta = Math.abs(averagePressure - this.nodes[x][y].pressure);
+                        var maxDelta = 0.002
+//                        console.log("delta: " + delta);
+                        if(delta > maxDelta){
+                            atEquilibrium = false;
+                            break;
+                        }
+                    }
+                }
+            }
+            
+            if(atEquilibrium == true){
+                console.log("REACHED EQUILIBRIUM");
+                clearInterval(this.t);
+            }
+        }
+    }
+    
+    
+    
+    class Order{
+        constructor(fromX,fromY,toX,toY,amount){
+            this.fromX = fromX;
+            this.fromY = fromY;
+            this.toX = toX;
+            this.toY = toY;
+            this.amount = amount;
+        }
+    }
+    
+//    draw();
+    const sm = new SystemManager(50,50,300,300);
+//    sm.randomizeNodes();
+//    sm.updateNodes();
+</script>
+
+</html>
